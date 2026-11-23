@@ -28,6 +28,14 @@ class PCBTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             detect(np.zeros((32, 32)), np.zeros((32, 32)))
 
+    def test_bad_threshold(self):
+        with self.assertRaises(ValueError):
+            detect(np.zeros((2, 2), np.uint8), np.zeros((2, 2), np.uint8), 256)
+
+    def test_bad_min_area(self):
+        with self.assertRaises(ValueError):
+            detect(np.zeros((2, 2), np.uint8), np.zeros((2, 2), np.uint8), min_area=0)
+
     def test_file_pipeline(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -39,8 +47,9 @@ class PCBTests(unittest.TestCase):
             (root/'one.txt').write_text('8 8 16 16 1\n')
             split = root/'test.txt'
             split.write_text('one.jpg one.txt\n')
-            r = run(root, split)
-            self.assertEqual((r['images'], r['tp'], r['fp'], r['fn']), (1, 1, 0, 0))
+            result = run(root, split)
+            self.assertEqual((result['images'], result['metrics_by_iou']['0.33']['tp'],
+                              result['metrics_by_iou']['0.50']['tp']), (1, 1, 1))
             split.write_text('one.jpg one.txt\none.jpg one.txt\n')
             with self.assertRaisesRegex(ValueError, 'duplicate'):
                 run(root, split)

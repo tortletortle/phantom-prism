@@ -22,10 +22,11 @@ class BenchmarkTests(unittest.TestCase):
 
     def test_fixture_report(self):
         r = benchmark(self.root, self.split, git_blob(self.raw), 1)
-        self.assertEqual(r['metrics']['tp'], 1)
-        self.assertEqual(r['metrics']['fp'], 0)
+        self.assertEqual(r['metrics']['metrics_by_iou']['0.33']['tp'], 1)
+        self.assertEqual(r['metrics']['metrics_by_iou']['0.50']['tp'], 1)
         self.assertEqual(len(r['dataset_fingerprint']), 64)
         self.assertEqual(len(r['code_sha256']), 5)
+        self.assertIn('opencv', r['environment'])
 
     def test_reject_unpinned(self):
         with self.assertRaisesRegex(ValueError, 'pinned'):
@@ -39,3 +40,7 @@ class BenchmarkTests(unittest.TestCase):
     def test_count(self):
         with self.assertRaisesRegex(ValueError, 'count'):
             benchmark(self.root, self.split, git_blob(self.raw), 2)
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -1,9 +1,12 @@
-"""Provenance report for the fixed DeepPCB reference baseline."""
+"""Provenance report for the fixed DeepPCB reference localization baseline."""
 import argparse
 import hashlib
 import json
 import platform
 from pathlib import Path
+import cv2
+import numpy as np
+from PIL import __version__ as pillow_version
 from deep_pcb_import import local_file
 from pcb_reference import run
 
@@ -21,7 +24,10 @@ def snapshot(root, raw):
     for line in raw.decode('utf-8-sig').splitlines():
         if not line.strip():
             continue
-        image, annotation = line.split()
+        fields = line.split()
+        if len(fields) != 2:
+            raise ValueError('Malformed official split row')
+        image, annotation = fields
         if image in ids:
             raise ValueError('Duplicate image ID')
         ids.add(image)
@@ -33,7 +39,7 @@ def snapshot(root, raw):
     return count, digest.hexdigest()
 
 
-def benchmark(root, split, expected_blob=OFFICIAL_TEST, expected_count=500):
+def benchmark(root, split, expected_blob=OFFICIAL_TEST, expected_count=500, pixel_threshold=35, min_area=20):
     root, split = Path(root).resolve(), Path(split).resolve()
     raw = split.read_bytes()
     if git_blob(raw) != expected_blob:
@@ -41,21 +47,26 @@ def benchmark(root, split, expected_blob=OFFICIAL_TEST, expected_count=500):
     before = snapshot(root, raw)
     if before[0] != expected_count:
         raise ValueError('Unexpected image count')
-    metrics = run(root, split)
+    metrics = run(root, split, pixel_threshold, min_area)
     if split.read_bytes() != raw or snapshot(root, raw) != before or metrics['images'] != before[0]:
         raise ValueError('Inputs changed during evaluation')
     here = Path(__file__).resolve().parent
     code = {name: hashlib.sha256((here/name).read_bytes()).hexdigest() for name in (
         'pcb_benchmark.py', 'pcb_reference.py', 'deep_pcb_import.py', 'inspection_preflight.py', 'detection_metrics.py')}
-    return dict(protocol='fixed class-agnostic paired PCB baseline', split_git_blob=expected_blob,
-                dataset_fingerprint=before[1], code_sha256=code, python=platform.python_version(), metrics=metrics)
+    return dict(protocol='fixed class-agnostic localization baseline; not official class-aware benchmark',
+                split_git_blob=expected_blob, dataset_fingerprint=before[1], code_sha256=code,
+                environment=dict(python=platform.python_version(), numpy=np.__version__,
+                                 opencv=cv2.__version__, pillow=pillow_version),
+                metrics=metrics)
 
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('root', type=Path)
     ap.add_argument('output', type=Path)
+    ap.add_argument('--pixel-threshold', type=int, default=35)
+    ap.add_argument('--min-area', type=int, default=20)
     args = ap.parse_args()
-    result = benchmark(args.root, args.root/'test.txt')
+    result = benchmark(args.root, args.root/'test.txt', pixel_threshold=args.pixel_threshold, min_area=args.min_area)
     with args.output.open('x', encoding='utf-8') as f:
         json.dump(result, f, indent=2, allow_nan=False)
